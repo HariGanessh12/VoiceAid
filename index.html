@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nyaya Mitra 2.0</title>
+    <!-- Modern clean typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Sleek Dark Mode Palette */
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --danger: #ef4444;
+            --danger-hover: #dc2626;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .container {
+            background-color: var(--surface);
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+            text-align: center;
+            width: 100%;
+            max-width: 420px;
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .container:hover {
+            transform: translateY(-4px);
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            /* Beautiful gradient tracking */
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.875rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn:hover {
+            background-color: var(--primary-hover);
+            transform: scale(1.02);
+            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn.active {
+            background-color: var(--danger);
+            box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.3);
+        }
+        
+        .btn.active:hover {
+            background-color: var(--danger-hover);
+            box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.4);
+        }
+
+        .response-area {
+            margin-top: 2rem;
+            padding: 1.25rem;
+            background-color: rgba(15, 23, 42, 0.6);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            text-align: left;
+            min-height: 90px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: var(--text);
+            transition: all 0.3s ease;
+        }
+
+        /* Micro-animations for live status indicator */
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--text-muted);
+            display: inline-block;
+            transition: background-color 0.3s;
+        }
+
+        .status-dot.listening {
+            background-color: #10b981;
+            box-shadow: 0 0 12px #10b981;
+            animation: pulse 1.5s infinite cubic-bezier(0.4, 0, 0.6, 1);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: .5; transform: scale(1.3); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Nyaya Mitra</h1>
+        <p>Voice-First Legal Assistant</p>
+
+        <button id="talkButton" class="btn">
+            <span id="statusDot" class="status-dot"></span>
+            <span id="buttonText">Start Speaking</span>
+        </button>
+
+        <div class="response-area" id="responseArea">
+            <em style="color: var(--text-muted)">Waiting to hear from you...</em>
+        </div>
+    </div>
+
+    <!-- Official Vapi Web SDK injection -->
+    <script type="module">
+        import Vapi from "https://esm.sh/@vapi-ai/web";
+
+        // UI Elements
+        const talkBtn = document.getElementById('talkButton');
+        const btnText = document.getElementById('buttonText');
+        const statusDot = document.getElementById('statusDot');
+        const responseArea = document.getElementById('responseArea');
+
+        let vapiInstance = null;
+        let isSpeaking = false;
+
+        // ** ADD YOUR TOKENS HERE **
+        const VAPI_PUBLIC_KEY = '17cea840-20a9-4a84-a536-2f28d1e31f02'; 
+        const ASSISTANT_ID = '5ea8431d-8521-4644-b002-2285095a8def';
+
+        try {
+            // Instantiate directly from default import
+            vapiInstance = new Vapi(VAPI_PUBLIC_KEY);
+
+            // Intercept messages passing from the assistant down to text
+            vapiInstance.on('message', (msg) => {
+                // If it's the assistant speaking back to us
+                if (msg.type === 'transcript' && msg.transcriptType === 'final') {
+                    responseArea.innerHTML = `<strong>Assistant:</strong> ${msg.transcript}`;
+                } else if (msg.type === 'conversation-update') {
+                    // Extract latest assistant message from full conversation array if preferred
+                    const conversation = msg.conversation;
+                    if(conversation && conversation.length > 0) {
+                        const lastMsg = conversation[conversation.length - 1];
+                        if(lastMsg.role === 'assistant') {
+                           responseArea.innerHTML = `<strong>Response:</strong> ${lastMsg.content}`;
+                        }
+                    }
+                }
+            });
+
+            // Handle UI states dynamically
+            vapiInstance.on('call-start', () => {
+                isSpeaking = true;
+                btnText.innerText = "Stop Speaking";
+                talkBtn.classList.add('active');
+                statusDot.classList.add('listening');
+                responseArea.innerHTML = "<em style='color: #10b981'>Listening intently...</em>";
+            });
+
+            vapiInstance.on('call-end', () => {
+                isSpeaking = false;
+                btnText.innerText = "Start Speaking";
+                talkBtn.classList.remove('active');
+                statusDot.classList.remove('listening');
+            });
+
+            vapiInstance.on('error', (e) => {
+                console.error("Vapi Error:", e);
+                responseArea.innerHTML = `<span style="color: var(--danger);">Connection Error. Please check Developer Console.</span>`;
+            });
+
+        } catch (e) {
+            console.error("Failed to initialize Vapi SDK:", e);
+            responseArea.innerHTML = `<span style="color: var(--danger);">SDK Load Error</span>`;
+        }
+
+        // Toggle logic
+        talkBtn.addEventListener('click', () => {
+            if (!vapiInstance) {
+                alert("Vapi SDK not initialized. Ensure valid Public Key.");
+                return;
+            }
+            if (!isSpeaking) {
+                // Instantiates a call session directly with the pre-configured engine
+                vapiInstance.start(ASSISTANT_ID);
+            } else {
+                vapiInstance.stop();
+            }
+        });
+    </script>
+</body>
+</html>
