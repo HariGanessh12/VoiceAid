@@ -2,6 +2,7 @@ import logging
 import time
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
 from app.routes import voice_webhook
@@ -27,6 +28,13 @@ app = FastAPI(
 )
 
 app.add_middleware(LoggingMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(voice_webhook.router, tags=["webhook"])
 

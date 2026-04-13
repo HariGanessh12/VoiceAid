@@ -20,6 +20,8 @@ build/
 dist/
 *.egg-info/
 pip-wheel-metadata/
+node_modules/
+.vite/
 
 # Editor and OS files
 .vscode/

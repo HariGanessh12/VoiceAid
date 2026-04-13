@@ -98,3 +98,52 @@ async def retrieve_context(user_id: str, query: str, top_k: int = 3) -> str:
     except Exception as e:
         logger.error(f"Failed to retrieve context: {e}")
         return ""
+
+
+async def get_recent_memories(user_id: str, limit: int = 20):
+    """
+    Returns recent stored memories for the given user_id.
+    """
+    try:
+        records = []
+        offset = None
+
+        while len(records) < limit:
+            batch, next_offset = await qdrant.scroll(
+                collection_name=COLLECTION_NAME,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="user_id",
+                            match=MatchValue(value=user_id)
+                        )
+                    ]
+                ),
+                limit=min(50, limit - len(records)),
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            records.extend(batch)
+
+            if next_offset is None:
+                break
+
+            offset = next_offset
+
+        items = []
+        for record in records:
+            payload = record.payload or {}
+            items.append({
+                "id": str(record.id),
+                "issue_summary": payload.get("text", "Untitled issue"),
+                "date_time": payload.get("timestamp", ""),
+                "issue_type": payload.get("issue_type", "general"),
+            })
+
+        items.sort(key=lambda item: item["date_time"], reverse=True)
+        return items[:limit]
+    except Exception as e:
+        logger.error(f"Failed to fetch recent memories: {e}")
+        return []

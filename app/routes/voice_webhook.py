@@ -1,33 +1,47 @@
 import logging
-from fastapi import APIRouter, BackgroundTasks
-from app.models.schemas import VapiWebhookRequest, VapiWebhookResponse, ProcessRequest
+from fastapi import APIRouter, Body
+from app.models.schemas import ProcessRequest
 from app.services.vapi_service import process_interaction
+from app.services.memory_service import get_recent_memories
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.post("/voice-webhook", response_model=VapiWebhookResponse)
-async def vapi_webhook(payload: VapiWebhookRequest):
+@router.post("/voice-webhook")
+async def vapi_webhook(payload: dict = Body(default={})):
     """
-    Receives Vapi webhook payload.
-    Synchronously runs the absolute full pipeline end-to-end to return the targeted TTS response.
+    Accepts either the simple frontend payload or the nested Vapi webhook payload.
     """
-    msg_type = payload.message.type
+    # Frontend demo shape:
+    # { "message": "hello", "call": { "from": "demo_user" } }
+    if isinstance(payload.get("message"), str):
+        transcript = payload.get("message", "").strip()
+        user_id = payload.get("call", {}).get("from") or "demo_user"
+        call_id = payload.get("call", {}).get("id") or "demo_call"
+
+        if transcript:
+            action = await process_interaction(transcript, user_id, call_id)
+            return {"message": f"Based on your situation, here's what you can do: {action}"}
+
+        return {"message": "I am listening."}
+
+    # Vapi webhook shape
+    message = payload.get("message", {})
+    msg_type = message.get("type")
     logger.info(f"Received Webhook, type: {msg_type}")
 
-    if msg_type in ["assistant-request", "user-message", "conversation-update"] and payload.message.transcript:
-        call_id = payload.message.call.id if payload.message.call else "unknown"
-        number = payload.message.call.customer.number if (payload.message.call and payload.message.call.customer and payload.message.call.customer.number) else "+10000000000"
-        transcript = payload.message.transcript
-        
-        # 1-5. Execute the entire integrated flow synchronously!
-        action = await process_interaction(transcript, number, call_id)
-        
-        # 6. Return voice response format
-        voice_response = f"Based on your situation, here's what you can do: {action}"
-        return VapiWebhookResponse(message=voice_response)
+    transcript = message.get("transcript", "")
+    if msg_type in ["assistant-request", "user-message", "conversation-update"] and transcript:
+        call = message.get("call") or {}
+        call_id = call.get("id") or "unknown"
+        customer = call.get("customer") or {}
+        number = customer.get("number") or "+10000000000"
 
-    return VapiWebhookResponse(message="I am listening.")
+        action = await process_interaction(transcript, number, call_id)
+        voice_response = f"Based on your situation, here's what you can do: {action}"
+        return {"message": voice_response}
+
+    return {"message": "I am listening."}
 
 @router.post("/process")
 async def process_internal(request: ProcessRequest):
@@ -37,3 +51,12 @@ async def process_internal(request: ProcessRequest):
     logger.info(f"Received manual process request for number {request.phone_number}")
     action = await process_interaction(request.transcript, request.phone_number)
     return {"status": "processing_completed", "action": action}
+
+
+@router.get("/history")
+async def get_history(user_id: str):
+    """
+    Returns recent memory items for the demo history page.
+    """
+    items = await get_recent_memories(user_id=user_id)
+    return {"history": items}
