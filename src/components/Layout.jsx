@@ -11,7 +11,7 @@ export function Shell({ children }) {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_transparent_40%),linear-gradient(180deg,#020617_0%,#0f172a_100%)]">
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <Link to="/" className="text-lg font-semibold tracking-tight text-white">
-          Nyaya Mitra
+          VoiceAid
         </Link>
         <nav className="flex items-center gap-2">
           <NavLink to="/" className={navLinkClass} end>

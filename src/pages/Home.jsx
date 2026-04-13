@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <Shell>
       <div className="grid w-full gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <Card title="Nyaya Mitra">
+        <Card title="VoiceAid">
           <p className="max-w-xl">
             A simple voice-first legal assistant that helps people start conversations, review past
             interactions, and understand the support available to them.

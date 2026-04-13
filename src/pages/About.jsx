@@ -3,10 +3,10 @@ import { Shell, Card } from '../components/Layout';
 export default function About() {
   return (
     <Shell>
-      <Card title="About Nyaya Mitra">
+      <Card title="About VoiceAid">
         <div className="space-y-4">
           <p>
-            Nyaya Mitra is a voice-first legal assistant built to make legal help easier to access
+            VoiceAid is a voice-first legal assistant built to make legal help easier to access
             and understand.
           </p>
           <p>

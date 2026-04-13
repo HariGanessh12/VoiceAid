@@ -23,7 +23,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         return response
 
 app = FastAPI(
-    title="Nyaya Mitra 2.0 API",
+    title="VoiceAid API",
     description="Backend for Voice-first AI Legal Assistant MVP",
 )
 

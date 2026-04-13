@@ -28,7 +28,7 @@ async def generate_conversational_response(transcript: str) -> str:
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are Nyaya Mitra, a helpful AI legal assistant. Respond conversationally, concisely, and naturally for a voice call."},
+                {"role": "system", "content": "You are VoiceAid, a helpful AI legal assistant. Respond conversationally, concisely, and naturally for a voice call."},
                 {"role": "user", "content": transcript}
             ],
             max_tokens=150,
@@ -45,7 +45,7 @@ async def process_legal_issue(transcript: str, past_context: str) -> tuple[str, 
         return ("Mock Structured Issue", "This is a mock formal legal complaint text.", "Contact a lawyer.")
 
     system_prompt = (
-        "You are Nyaya Mitra, an expert AI legal assistant. Respond exclusively in JSON format. "
+        "You are VoiceAid, an expert AI legal assistant. Respond exclusively in JSON format. "
         "Handle multilingual input by translating and processing internally, but feel free to draft the 'complaint' in the user's original language. "
         "Convert user speech into:\n"
         "1. Legal issue type\n"

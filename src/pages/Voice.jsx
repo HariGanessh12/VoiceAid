@@ -2,126 +2,182 @@ import { useEffect, useRef, useState } from 'react';
 import { Shell, Card } from '../components/Layout';
 import { apiUrl } from '../lib/api';
 
+const VAPI_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY;
+const VAPI_ASSISTANT_ID = import.meta.env.VITE_VAPI_ASSISTANT_ID;
+
 export default function Voice() {
-  const recognitionRef = useRef(null);
-  const transcriptRef = useRef('');
+  const vapiRef = useRef(null);
+  const conversationRef = useRef([]);
   const [isListening, setIsListening] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('Idle');
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState('');
-  const [supported, setSupported] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const appendMessage = (role, text) => {
+    const cleanText = String(text || '').trim();
+    if (!cleanText) return;
 
-    if (!SpeechRecognition) {
-      setSupported(false);
+    setMessages((current) => {
+      const last = current[current.length - 1];
+      if (last && last.role === role && last.text === cleanText) {
+        return current;
+      }
+      conversationRef.current.push(`${role}: ${cleanText}`);
+      return [...current, { role, text: cleanText }];
+    });
+  };
+
+  const syncConversation = (entries) => {
+    const nextMessages = (entries || [])
+      .map((entry) => {
+        const role = entry?.role === 'assistant' ? 'ai' : 'user';
+        const text = String(entry?.message || entry?.content || entry?.transcript || '').trim();
+
+        if (!text) {
+          return null;
+        }
+
+        return { role, text };
+      })
+      .filter(Boolean);
+
+    if (nextMessages.length === 0) {
       return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = true;
-    recognition.continuous = false;
+    const conversationLines = nextMessages.map((item) => `${item.role}: ${item.text}`);
+    conversationRef.current = conversationLines;
+    setMessages(nextMessages);
+  };
 
-    recognition.onstart = () => {
-      setStatus('Listening...');
-      setError('');
-    };
+  useEffect(() => {
+    let mounted = true;
 
-    recognition.onresult = (event) => {
-      transcriptRef.current = Array.from(event.results)
-        .map((result) => result[0].transcript)
-        .join('')
-        .trim();
-    };
-
-    recognition.onerror = () => {
-      setStatus('Idle');
-      setIsListening(false);
-      setError('Speech recognition is not available in this browser.');
-    };
-
-    recognition.onend = async () => {
-      setIsListening(false);
-      setIsProcessing(true);
-
-      const userMessage = transcriptRef.current.trim();
-      if (!userMessage) {
-        setStatus('Idle');
-        setIsProcessing(false);
-        return;
-      }
-
-      setMessages((current) => [...current, { role: 'user', text: userMessage }]);
-      setStatus('Processing...');
-
+    const initVapi = async () => {
       try {
-        const response = await fetch(apiUrl('/voice-webhook'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            message: userMessage,
-            call: { from: 'demo_user' },
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Request failed');
+        if (!VAPI_PUBLIC_KEY || !VAPI_ASSISTANT_ID) {
+          if (mounted) {
+            setError('Vapi keys are missing from .env.');
+          }
+          return;
         }
 
-        const data = await response.json();
-        const aiText =
-          typeof data === 'string'
-            ? data
-            : data?.message || data?.text || data?.response || data?.reply || 'No response returned.';
+        const { default: Vapi } = await import(
+          /* @vite-ignore */ 'https://esm.sh/@vapi-ai/web'
+        );
 
-        setMessages((current) => [...current, { role: 'ai', text: aiText }]);
+        const vapi = new Vapi(VAPI_PUBLIC_KEY);
+
+        vapi.on('call-start', () => {
+          if (!mounted) return;
+          setIsListening(true);
+          setStatus('Listening...');
+          setError('');
+        });
+
+        vapi.on('message', (rawMsg) => {
+          if (!mounted) return;
+
+          const msg = rawMsg?.message ?? rawMsg;
+
+          if (msg.type === 'transcript' && msg.transcriptType === 'final') {
+            const role = msg.role === 'assistant' ? 'ai' : 'user';
+            appendMessage(role, msg.transcript);
+          } else if (msg.type === 'conversation-update') {
+            const conversation = msg.messages || msg.conversation || msg.messagesOpenAIFormatted || [];
+            syncConversation(conversation);
+          } else if (msg.type === 'speech-update' && msg.role === 'assistant' && msg.status === 'started') {
+            setStatus('Listening...');
+          }
+        });
+
+        vapi.on('error', () => {
+          if (!mounted) return;
+          setIsListening(false);
+          setStatus('Idle');
+          setError('Unable to connect to the voice assistant.');
+        });
+
+        vapi.on('call-end', async () => {
+          if (!mounted) return;
+          setIsListening(false);
+          setStatus('Saving...');
+          setSaving(true);
+
+          try {
+            const conversationText = conversationRef.current.join('\n');
+            if (conversationText) {
+              await fetch(apiUrl('/memory'), {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  user_id: 'demo_user',
+                  issue_type: 'conversation',
+                  text: conversationText,
+                }),
+              });
+            }
+          } catch {
+            // Keep the UI quiet for demo usability.
+          } finally {
+            if (mounted) {
+              setSaving(false);
+              setStatus('Idle');
+            }
+          }
+        });
+
+        vapiRef.current = vapi;
       } catch {
-        setMessages((current) => [
-          ...current,
-          { role: 'ai', text: 'Unable to reach the backend right now.' },
-        ]);
-      } finally {
-        transcriptRef.current = '';
-        setStatus('Idle');
-        setIsProcessing(false);
+        if (mounted) {
+          setError('Voice SDK could not load.');
+        }
       }
     };
 
-    recognitionRef.current = recognition;
+    initVapi();
 
     return () => {
-      recognition.stop();
-      recognitionRef.current = null;
+      mounted = false;
+      if (vapiRef.current) {
+        vapiRef.current.stop();
+        vapiRef.current = null;
+      }
     };
   }, []);
 
-  const toggleListening = () => {
+  const startListening = async () => {
     setError('');
 
-    if (isProcessing) {
+    if (!vapiRef.current) {
+      setError('Voice assistant is not ready yet.');
       return;
     }
 
-    if (!supported || !recognitionRef.current) {
-      setError('Speech recognition is not supported in this browser.');
+    if (isListening) return;
+
+    try {
+      setStatus('Connecting...');
+      conversationRef.current = [];
+      setMessages([]);
+      await vapiRef.current.start(VAPI_ASSISTANT_ID);
+    } catch {
+      setStatus('Idle');
+      setError('Unable to start the voice assistant.');
+    }
+  };
+
+  const stopListening = () => {
+    if (!vapiRef.current || !isListening) {
       return;
     }
 
-    if (isListening) {
-      recognitionRef.current.stop();
-      setStatus('Processing...');
-      setIsListening(false);
-      return;
-    }
-
-    transcriptRef.current = '';
-    setIsListening(true);
-    recognitionRef.current.start();
+    vapiRef.current.stop();
+    setIsListening(false);
+    setStatus('Saving...');
   };
 
   return (
@@ -129,36 +185,42 @@ export default function Voice() {
       <div className="grid w-full gap-6">
         <Card title="Voice">
           <p className="max-w-2xl">
-            Press start, speak your message, then press stop to send it to the assistant.
+            Press start to open the assistant. It should speak first, then listen for your reply.
           </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
-              onClick={toggleListening}
-              disabled={isProcessing}
+              onClick={startListening}
+              disabled={isListening}
               className={[
                 'rounded-full px-5 py-3 font-medium transition',
-                isProcessing ? 'cursor-not-allowed opacity-70' : '',
                 isListening
-                  ? 'bg-rose-500 text-white hover:bg-rose-400'
+                  ? 'cursor-not-allowed bg-cyan-400 text-slate-950 opacity-60'
                   : 'bg-cyan-400 text-slate-950 hover:bg-cyan-300',
               ].join(' ')}
             >
-              {isListening ? 'Stop Listening' : isProcessing ? 'Processing...' : 'Start Listening'}
+              Start Listening
+            </button>
+            <button
+              onClick={stopListening}
+              disabled={!isListening}
+              className={[
+                'rounded-full px-5 py-3 font-medium transition',
+                isListening
+                  ? 'bg-rose-500 text-white hover:bg-rose-400'
+                  : 'cursor-not-allowed bg-rose-500 text-white opacity-60',
+              ].join(' ')}
+            >
+              Stop Listening
             </button>
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
               {status}
             </span>
           </div>
 
-          {isProcessing ? <p className="mt-4 text-sm text-slate-300">Sending your message...</p> : null}
+          {saving ? <p className="mt-4 text-sm text-slate-300">Saving conversation to history...</p> : null}
 
           {error ? <p className="mt-4 text-sm text-rose-300">{error}</p> : null}
-          {!supported ? (
-            <p className="mt-4 text-sm text-amber-300">
-              This browser does not support speech recognition.
-            </p>
-          ) : null}
         </Card>
 
         <div className="grid gap-4">

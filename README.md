@@ -1,4 +1,4 @@
-# Nyaya Mitra 2.0 - Backend
+# VoiceAid - Backend
 
 A voice-first AI legal assistant backend. This system receives webhooks from Vapi (voice input), synthesizes the query into a structured legal issue using OpenAI, queries past interactions from Qdrant, and texts the user a drafted complaint via Twilio.
 
@@ -14,7 +14,7 @@ A voice-first AI legal assistant backend. This system receives webhooks from Vap
 
 1. **Clone/Navigate to Repo**
    ```bash
-   cd nyaya-mitra
+   cd VoiceAid
    ```
 
 2. **Create a virtual environment & Install dependencies**

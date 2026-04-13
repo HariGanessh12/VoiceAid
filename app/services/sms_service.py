@@ -31,7 +31,7 @@ async def send_sms(phone: str, complaint: str):
     """
     client = get_twilio_client()
     
-    prefix = "Nyaya Mitra Draft:\n"
+    prefix = "VoiceAid Draft:\n"
     full_text = prefix + complaint
     
     # SMS length handling (split if needed)

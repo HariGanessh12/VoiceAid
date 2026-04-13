@@ -2,7 +2,7 @@ import logging
 from fastapi import APIRouter, Body
 from app.models.schemas import ProcessRequest
 from app.services.vapi_service import process_interaction
-from app.services.memory_service import get_recent_memories
+from app.services.memory_service import get_recent_memories, store_memory
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -60,3 +60,19 @@ async def get_history(user_id: str):
     """
     items = await get_recent_memories(user_id=user_id)
     return {"history": items}
+
+
+@router.post("/memory")
+async def save_memory(payload: dict = Body(default={})):
+    """
+    Stores a conversation summary directly in Qdrant for the history page.
+    """
+    user_id = payload.get("user_id") or "demo_user"
+    text = payload.get("text", "").strip()
+    issue_type = payload.get("issue_type") or "conversation"
+
+    if not text:
+        return {"status": "ignored"}
+
+    await store_memory(user_id=user_id, text=text, issue_type=issue_type)
+    return {"status": "stored"}
