@@ -1,14 +1,15 @@
 import logging
+import os
 import time
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-import os
 from app.routes import voice_webhook
 from app.services.memory_service import seed_demo_memories
 
-logging.basicConfig(level=logging.INFO)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
 logger = logging.getLogger(__name__)
 
 class LoggingMiddleware(BaseHTTPMiddleware):

@@ -9,10 +9,43 @@ from app.services.llm_service import generate_embeddings
 
 logger = logging.getLogger(__name__)
 
-if settings.qdrant_url and settings.qdrant_api_key:
-    qdrant = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
-else:
-    qdrant = AsyncQdrantClient(location=":memory:")
+
+def _log_qdrant_expected_error(context: str, exc: Exception) -> None:
+    """
+    Emit a concise warning plus a debug trace for expected Qdrant failures.
+    This keeps production logs readable while giving us enough detail when
+    DEBUG logging is enabled.
+    """
+    logger.debug(
+        "%s failed with %s: %s",
+        context,
+        type(exc).__name__,
+        exc,
+        exc_info=True,
+    )
+
+def _create_qdrant_client() -> AsyncQdrantClient:
+    """
+    Build the Qdrant client from env settings.
+    trust_env=False is important here because the shell environment may set
+    a dead proxy (for example http://127.0.0.1:9), which would otherwise
+    break Qdrant connectivity even when the URL and API key are valid.
+    """
+    url = (settings.qdrant_url or "").strip()
+    api_key = (settings.qdrant_api_key or "").strip()
+
+    if url and api_key:
+        return AsyncQdrantClient(
+            url=url,
+            api_key=api_key,
+            trust_env=False,
+            timeout=30,
+        )
+
+    return AsyncQdrantClient(location=":memory:")
+
+
+qdrant = _create_qdrant_client()
 
 COLLECTION_NAME = "legal_memory"
 VECTOR_SIZE = 1536
@@ -63,6 +96,7 @@ async def init_qdrant():
             )
     except Exception as e:
         logger.error(f"Error initializing Qdrant: {e}")
+        _log_qdrant_expected_error("init_qdrant", e)
 
 async def seed_demo_memories():
     """
@@ -78,6 +112,7 @@ async def seed_demo_memories():
         exists = await qdrant.collection_exists(COLLECTION_NAME)
     except Exception as e:
         logger.warning(f"Qdrant is unreachable, skipping demo seed: {e}")
+        _log_qdrant_expected_error("seed_demo_memories.collection_exists", e)
         return
 
     try:
@@ -85,6 +120,7 @@ async def seed_demo_memories():
             await init_qdrant()
     except Exception as e:
         logger.error(f"Failed to prepare demo collection: {e}")
+        _log_qdrant_expected_error("seed_demo_memories.init_qdrant", e)
         return
 
     if not exists:
@@ -112,6 +148,7 @@ async def seed_demo_memories():
         logger.info("Seeded 2 demo memories in Qdrant.")
     except Exception as e:
         logger.error(f"Failed to seed demo memories: {e}")
+        _log_qdrant_expected_error("seed_demo_memories.upsert", e)
 
 async def store_memory(user_id: str, text: str, issue_type: str = "general"):
     """
@@ -145,6 +182,7 @@ async def store_memory(user_id: str, text: str, issue_type: str = "general"):
         logger.info(f"Memory {point_id} stored for user {user_id}")
     except Exception as e:
         logger.error(f"Failed to store memory: {e}")
+        _log_qdrant_expected_error("store_memory.upsert", e)
 
 async def retrieve_context(user_id: str, query: str, top_k: int = 3) -> str:
     """
@@ -180,6 +218,7 @@ async def retrieve_context(user_id: str, query: str, top_k: int = 3) -> str:
         return "\n".join(context_parts)
     except Exception as e:
         logger.error(f"Failed to retrieve context: {e}")
+        _log_qdrant_expected_error("retrieve_context.search", e)
         return ""
 
 
@@ -229,4 +268,5 @@ async def get_recent_memories(user_id: str, limit: int = 20):
         return items[:limit]
     except Exception as e:
         logger.error(f"Failed to fetch recent memories: {e}")
+        _log_qdrant_expected_error("get_recent_memories.scroll", e)
         return []
