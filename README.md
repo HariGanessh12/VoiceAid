@@ -28,9 +28,12 @@ A voice-first AI legal assistant backend. This system receives webhooks from Vap
    ```
 
 3. **Environment Setup**
-   Copy `.env.example` to `.env` and fill out your keys.
+   Create a `.env` file in the project root and fill out your keys.
    ```bash
-   cp .env.example .env
+   # Windows PowerShell
+   New-Item .env -ItemType File
+
+   # Or create the file manually and add your values
    ```
 
 4. **Run the FastAPI server**
