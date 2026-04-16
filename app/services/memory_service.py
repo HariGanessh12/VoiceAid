@@ -1,4 +1,5 @@
 import logging
+import hashlib
 import uuid
 from datetime import datetime, timezone
 from app.config import settings
@@ -15,6 +16,35 @@ else:
 
 COLLECTION_NAME = "legal_memory"
 VECTOR_SIZE = 1536
+DEMO_POINTS = [
+    {
+        "id": "demo-memory-1",
+        "user_id": "demo_user",
+        "text": "Issue: Unlawful eviction | Facts: Landlord changed the locks without notice and removed personal property | Action: Send a legal notice and document all losses.",
+        "issue_type": "legal_complaint",
+    },
+    {
+        "id": "demo-memory-2",
+        "user_id": "demo_user",
+        "text": "Issue: Workplace wage dispute | Facts: Employer delayed salary payments and did not provide a written explanation | Action: Collect payslips and file a formal complaint.",
+        "issue_type": "legal_complaint",
+    },
+]
+
+def _local_demo_embedding(text: str) -> list[float]:
+    """
+    Deterministic local embedding used only for demo seeding.
+    Keeps startup independent from OpenAI connectivity or API keys.
+    """
+    seed = hashlib.sha256(text.encode("utf-8")).digest()
+    values = []
+    while len(values) < VECTOR_SIZE:
+        for byte in seed:
+            values.append((byte / 255.0) * 2.0 - 1.0)
+            if len(values) == VECTOR_SIZE:
+                break
+        seed = hashlib.sha256(seed).digest()
+    return values
 
 async def init_qdrant():
     try:
@@ -34,11 +64,64 @@ async def init_qdrant():
     except Exception as e:
         logger.error(f"Error initializing Qdrant: {e}")
 
+async def seed_demo_memories():
+    """
+    Seeds exactly two deterministic demo records in Qdrant.
+    Uses fixed point IDs so repeated startups overwrite the same demo data
+    instead of creating duplicates.
+    """
+    if not settings.qdrant_seed_demo_data:
+        logger.info("Qdrant demo seeding is disabled.")
+        return
+
+    try:
+        exists = await qdrant.collection_exists(COLLECTION_NAME)
+    except Exception as e:
+        logger.warning(f"Qdrant is unreachable, skipping demo seed: {e}")
+        return
+
+    try:
+        if not exists:
+            await init_qdrant()
+    except Exception as e:
+        logger.error(f"Failed to prepare demo collection: {e}")
+        return
+
+    if not exists:
+        logger.info(f"Created Qdrant collection for demo data: {COLLECTION_NAME}")
+
+    points = []
+    for item in DEMO_POINTS:
+        embedding = _local_demo_embedding(item["text"])
+        points.append(
+            PointStruct(
+                id=item["id"],
+                vector=embedding,
+                payload={
+                    "user_id": item["user_id"],
+                    "text": item["text"],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "issue_type": item["issue_type"],
+                    "seed_type": "demo",
+                },
+            )
+        )
+
+    try:
+        await qdrant.upsert(collection_name=COLLECTION_NAME, points=points)
+        logger.info("Seeded 2 demo memories in Qdrant.")
+    except Exception as e:
+        logger.error(f"Failed to seed demo memories: {e}")
+
 async def store_memory(user_id: str, text: str, issue_type: str = "general"):
     """
     1. Generates embedding internally
     2. Stores new semantic memory interaction into Qdrant for a user
     """
+    if not settings.qdrant_allow_runtime_writes:
+        logger.info("Runtime Qdrant writes are disabled; skipping store_memory.")
+        return
+
     try:
         embedding = await generate_embeddings(text)
         point_id = uuid.uuid4().hex

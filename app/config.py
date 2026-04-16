@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     
     qdrant_url: Optional[str] = None
     qdrant_api_key: Optional[str] = None
+    qdrant_seed_demo_data: bool = True
+    qdrant_allow_runtime_writes: bool = False
     
     vapi_secret: Optional[str] = None
     

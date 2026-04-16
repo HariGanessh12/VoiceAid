@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
 from app.routes import voice_webhook
+from app.services.memory_service import seed_demo_memories
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,6 +38,10 @@ app.add_middleware(
 )
 
 app.include_router(voice_webhook.router, tags=["webhook"])
+
+@app.on_event("startup")
+async def startup_event():
+    await seed_demo_memories()
 
 @app.get("/")
 async def serve_frontend():

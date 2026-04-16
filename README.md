@@ -36,6 +36,13 @@ A voice-first AI legal assistant backend. This system receives webhooks from Vap
    # Or create the file manually and add your values
    ```
 
+   For Qdrant demo mode, keep these defaults:
+   ```env
+   QDRANT_SEED_DEMO_DATA=true
+   QDRANT_ALLOW_RUNTIME_WRITES=false
+   ```
+   This seeds exactly 2 demo memories in Qdrant and prevents extra runtime writes.
+
 4. **Run the FastAPI server**
    ```bash
    uvicorn main:app --reload
