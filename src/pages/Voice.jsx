@@ -4,6 +4,21 @@ import { apiUrl } from '../lib/api';
 
 const VAPI_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY;
 const VAPI_ASSISTANT_ID = import.meta.env.VITE_VAPI_ASSISTANT_ID;
+let vapiClientPromise = null;
+
+async function getVapiClient() {
+  if (!VAPI_PUBLIC_KEY) {
+    throw new Error('Vapi public key is missing.');
+  }
+
+  if (!vapiClientPromise) {
+    vapiClientPromise = import(
+      /* @vite-ignore */ 'https://esm.sh/@vapi-ai/web'
+    ).then(({ default: Vapi }) => new Vapi(VAPI_PUBLIC_KEY));
+  }
+
+  return vapiClientPromise;
+}
 
 export default function Voice() {
   const vapiRef = useRef(null);
@@ -63,20 +78,15 @@ export default function Voice() {
           return;
         }
 
-        const { default: Vapi } = await import(
-          /* @vite-ignore */ 'https://esm.sh/@vapi-ai/web'
-        );
-
-        const vapi = new Vapi(VAPI_PUBLIC_KEY);
-
-        vapi.on('call-start', () => {
+        const vapi = await getVapiClient();
+        const handleCallStart = () => {
           if (!mounted) return;
           setIsListening(true);
           setStatus('Listening...');
           setError('');
-        });
+        };
 
-        vapi.on('message', (rawMsg) => {
+        const handleMessage = (rawMsg) => {
           if (!mounted) return;
 
           const msg = rawMsg?.message ?? rawMsg;
@@ -90,16 +100,16 @@ export default function Voice() {
           } else if (msg.type === 'speech-update' && msg.role === 'assistant' && msg.status === 'started') {
             setStatus('Listening...');
           }
-        });
+        };
 
-        vapi.on('error', () => {
+        const handleError = () => {
           if (!mounted) return;
           setIsListening(false);
           setStatus('Idle');
           setError('Unable to connect to the voice assistant.');
-        });
+        };
 
-        vapi.on('call-end', async () => {
+        const handleCallEnd = async () => {
           if (!mounted) return;
           setIsListening(false);
           setStatus('Saving...');
@@ -128,9 +138,20 @@ export default function Voice() {
               setStatus('Idle');
             }
           }
-        });
+        };
+
+        vapi.on('call-start', handleCallStart);
+        vapi.on('message', handleMessage);
+        vapi.on('error', handleError);
+        vapi.on('call-end', handleCallEnd);
 
         vapiRef.current = vapi;
+        vapiRef.current.__voiceHandlers = {
+          handleCallStart,
+          handleMessage,
+          handleError,
+          handleCallEnd,
+        };
       } catch {
         if (mounted) {
           setError('Voice SDK could not load.');
@@ -143,7 +164,14 @@ export default function Voice() {
     return () => {
       mounted = false;
       if (vapiRef.current) {
-        vapiRef.current.stop();
+        const handlers = vapiRef.current.__voiceHandlers;
+        if (handlers && typeof vapiRef.current.off === 'function') {
+          vapiRef.current.off('call-start', handlers.handleCallStart);
+          vapiRef.current.off('message', handlers.handleMessage);
+          vapiRef.current.off('error', handlers.handleError);
+          vapiRef.current.off('call-end', handlers.handleCallEnd);
+        }
+        delete vapiRef.current.__voiceHandlers;
         vapiRef.current = null;
       }
     };

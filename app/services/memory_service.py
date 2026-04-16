@@ -34,15 +34,15 @@ def _create_qdrant_client() -> AsyncQdrantClient:
     url = (settings.qdrant_url or "").strip()
     api_key = (settings.qdrant_api_key or "").strip()
 
-    if url and api_key:
-        return AsyncQdrantClient(
-            url=url,
-            api_key=api_key,
-            trust_env=False,
-            timeout=30,
-        )
+    if not url or not api_key:
+        raise ValueError("QDRANT_URL and QDRANT_API_KEY must be set for Qdrant-only storage.")
 
-    return AsyncQdrantClient(location=":memory:")
+    return AsyncQdrantClient(
+        url=url,
+        api_key=api_key,
+        trust_env=False,
+        timeout=30,
+    )
 
 
 qdrant = _create_qdrant_client()
@@ -51,13 +51,13 @@ COLLECTION_NAME = "legal_memory"
 VECTOR_SIZE = 1536
 DEMO_POINTS = [
     {
-        "id": "demo-memory-1",
+        "id": "11111111-1111-1111-1111-111111111111",
         "user_id": "demo_user",
         "text": "Issue: Unlawful eviction | Facts: Landlord changed the locks without notice and removed personal property | Action: Send a legal notice and document all losses.",
         "issue_type": "legal_complaint",
     },
     {
-        "id": "demo-memory-2",
+        "id": "22222222-2222-2222-2222-222222222222",
         "user_id": "demo_user",
         "text": "Issue: Workplace wage dispute | Facts: Employer delayed salary payments and did not provide a written explanation | Action: Collect payslips and file a formal complaint.",
         "issue_type": "legal_complaint",
@@ -97,6 +97,7 @@ async def init_qdrant():
     except Exception as e:
         logger.error(f"Error initializing Qdrant: {e}")
         _log_qdrant_expected_error("init_qdrant", e)
+        raise
 
 async def seed_demo_memories():
     """
@@ -111,9 +112,9 @@ async def seed_demo_memories():
     try:
         exists = await qdrant.collection_exists(COLLECTION_NAME)
     except Exception as e:
-        logger.warning(f"Qdrant is unreachable, skipping demo seed: {e}")
+        logger.error(f"Qdrant is unavailable, cannot seed demo data: {e}")
         _log_qdrant_expected_error("seed_demo_memories.collection_exists", e)
-        return
+        raise
 
     try:
         if not exists:
@@ -121,7 +122,7 @@ async def seed_demo_memories():
     except Exception as e:
         logger.error(f"Failed to prepare demo collection: {e}")
         _log_qdrant_expected_error("seed_demo_memories.init_qdrant", e)
-        return
+        raise
 
     if not exists:
         logger.info(f"Created Qdrant collection for demo data: {COLLECTION_NAME}")
@@ -149,6 +150,7 @@ async def seed_demo_memories():
     except Exception as e:
         logger.error(f"Failed to seed demo memories: {e}")
         _log_qdrant_expected_error("seed_demo_memories.upsert", e)
+        raise
 
 async def store_memory(user_id: str, text: str, issue_type: str = "general"):
     """
@@ -183,6 +185,7 @@ async def store_memory(user_id: str, text: str, issue_type: str = "general"):
     except Exception as e:
         logger.error(f"Failed to store memory: {e}")
         _log_qdrant_expected_error("store_memory.upsert", e)
+        raise
 
 async def retrieve_context(user_id: str, query: str, top_k: int = 3) -> str:
     """
@@ -219,7 +222,7 @@ async def retrieve_context(user_id: str, query: str, top_k: int = 3) -> str:
     except Exception as e:
         logger.error(f"Failed to retrieve context: {e}")
         _log_qdrant_expected_error("retrieve_context.search", e)
-        return ""
+        raise
 
 
 async def get_recent_memories(user_id: str, limit: int = 20):
@@ -269,4 +272,4 @@ async def get_recent_memories(user_id: str, limit: int = 20):
     except Exception as e:
         logger.error(f"Failed to fetch recent memories: {e}")
         _log_qdrant_expected_error("get_recent_memories.scroll", e)
-        return []
+        raise
